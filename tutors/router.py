@@ -9,8 +9,11 @@ from users.manager import get_user_manager
 from users.auth import auth_backend
 from fastapi_users import FastAPIUsers
 
-from tutors.models import TutorProfile
-from tutors.schemas import TutorProfileCreate, TutorProfileUpdate, TutorProfileRead
+from tutors.models import TutorProfile, AvailabilityPattern
+from tutors.schemas import (
+    TutorProfileCreate, TutorProfileUpdate, TutorProfileRead,
+    AvailabilityPatternCreate, AvailabilityPatternUpdate, AvailabilityPatternRead
+)
 
 router = APIRouter()
 
@@ -125,3 +128,85 @@ async def get_tutor_profile(
     response = TutorProfileRead.model_validate(profile)
     response.full_name = full_name
     return response
+
+# Availability Patterns Endpoints
+
+@router.post("/me/availability", response_model=AvailabilityPatternRead)
+async def create_availability_pattern(
+    pattern_data: AvailabilityPatternCreate,
+    user: User = Depends(get_current_tutor),
+    session: AsyncSession = Depends(get_async_session)
+):
+    # Ensure tutor profile exists
+    result = await session.execute(select(TutorProfile).where(TutorProfile.user_id == user.id))
+    if not result.scalar_one_or_none():
+         raise HTTPException(status_code=400, detail="Tutor profile must be created first")
+
+    new_pattern = AvailabilityPattern(**pattern_data.model_dump(), tutor_id=user.id)
+    session.add(new_pattern)
+    await session.commit()
+    await session.refresh(new_pattern)
+    return new_pattern
+
+@router.get("/{public_handle}/availability", response_model=list[AvailabilityPatternRead])
+async def get_tutor_availability(
+    public_handle: str,
+    session: AsyncSession = Depends(get_async_session)
+):
+    # Verify tutor exists
+    result_tutor = await session.execute(select(TutorProfile).where(TutorProfile.public_handle == public_handle))
+    tutor = result_tutor.scalar_one_or_none()
+    if not tutor:
+        raise HTTPException(status_code=404, detail="Tutor not found")
+
+    result = await session.execute(
+        select(AvailabilityPattern)
+        .where(AvailabilityPattern.tutor_id == tutor.user_id)
+        .where(AvailabilityPattern.is_active)
+    )
+    return result.scalars().all()
+
+@router.put("/me/availability/{pattern_id}", response_model=AvailabilityPatternRead)
+async def update_availability_pattern(
+    pattern_id: int,
+    pattern_update: AvailabilityPatternUpdate,
+    user: User = Depends(get_current_tutor),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+        select(AvailabilityPattern)
+        .where(AvailabilityPattern.id == pattern_id)
+        .where(AvailabilityPattern.tutor_id == user.id)
+    )
+    pattern = result.scalar_one_or_none()
+    
+    if not pattern:
+        raise HTTPException(status_code=404, detail="Availability pattern not found")
+
+    update_data = pattern_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(pattern, key, value)
+
+    await session.commit()
+    await session.refresh(pattern)
+    return pattern
+
+@router.delete("/me/availability/{pattern_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_availability_pattern(
+    pattern_id: int,
+    user: User = Depends(get_current_tutor),
+    session: AsyncSession = Depends(get_async_session)
+):
+    result = await session.execute(
+        select(AvailabilityPattern)
+        .where(AvailabilityPattern.id == pattern_id)
+        .where(AvailabilityPattern.tutor_id == user.id)
+    )
+    pattern = result.scalar_one_or_none()
+    
+    if not pattern:
+        raise HTTPException(status_code=404, detail="Availability pattern not found")
+
+    await session.delete(pattern)
+    await session.commit()
+    return None
