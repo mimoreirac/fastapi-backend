@@ -8,6 +8,7 @@ from users.manager import get_user_manager
 from users.models import User
 from users.schemas import UserRead, UserCreate, UserUpdate
 from tutors.router import router as tutors_router
+from appointments.router import router as appointments_router
 
 app = FastAPI()
 
@@ -43,6 +44,13 @@ api_router.include_router(
     tutors_router,
     prefix="/tutors",
     tags=["tutors"]
+)
+
+# Appointment Routes
+api_router.include_router(
+    appointments_router,
+    prefix="/appointments",
+    tags=["appointments"]
 )
 
 # Mount the API router to the main app
