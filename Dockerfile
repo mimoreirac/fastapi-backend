@@ -22,4 +22,4 @@ RUN uv sync --locked
 EXPOSE 8000
 
 # Run the application using the venv explicitly
-CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uv", "run", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*"]

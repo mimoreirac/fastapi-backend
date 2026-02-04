@@ -1,7 +1,7 @@
 from fastapi_users.authentication import AuthenticationBackend, BearerTransport, JWTStrategy
 from core.config import settings
 
-bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
+bearer_transport = BearerTransport(tokenUrl="/api/v1/auth/jwt/login")
 
 def get_jwt_strategy() -> JWTStrategy:
     return JWTStrategy(secret=settings.SECRET_KEY, lifetime_seconds=3600)
