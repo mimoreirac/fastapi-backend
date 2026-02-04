@@ -1,6 +1,6 @@
 services:
   backend:
-    build: .
+    image: mimoreirac/agendasimple-backend:latest
     expose:
       - "8000"
     environment:
