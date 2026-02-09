@@ -48,3 +48,9 @@ class AvailabilityPatternRead(AvailabilityPatternBase):
     id: int
     
     model_config = ConfigDict(from_attributes=True)
+
+
+class SlotRead(BaseModel):
+    start_datetime: datetime
+    end_datetime: datetime
+    available: bool

@@ -12,9 +12,7 @@ class UserRead(schemas.BaseUser[uuid.UUID]):
 
 class UserCreate(schemas.BaseUserCreate):
     full_name: str
-    role: str = "client"
 
 
 class UserUpdate(schemas.BaseUserUpdate):
     full_name: str | None = None
-    role: str | None = None

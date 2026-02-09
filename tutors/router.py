@@ -1,7 +1,9 @@
 import uuid
+from datetime import date, datetime, timedelta, time
+from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, and_
 
 from db import get_async_session
 from users.models import User
@@ -12,8 +14,10 @@ from fastapi_users import FastAPIUsers
 from tutors.models import TutorProfile, AvailabilityPattern
 from tutors.schemas import (
     TutorProfileCreate, TutorProfileUpdate, TutorProfileRead,
-    AvailabilityPatternCreate, AvailabilityPatternUpdate, AvailabilityPatternRead
+    AvailabilityPatternCreate, AvailabilityPatternUpdate, AvailabilityPatternRead,
+    SlotRead
 )
+from appointments.models import Appointment
 
 router = APIRouter()
 
@@ -69,6 +73,24 @@ async def create_my_profile(
     return response
 
 
+@router.get("/me", response_model=TutorProfileRead)
+async def get_my_profile(
+    user: User = Depends(get_current_tutor),
+    session: AsyncSession = Depends(get_async_session),
+):
+    result = await session.execute(
+        select(TutorProfile).where(TutorProfile.user_id == user.id)
+    )
+    profile = result.scalar_one_or_none()
+
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+
+    response = TutorProfileRead.model_validate(profile)
+    response.full_name = user.full_name
+    return response
+
+
 @router.put("/me", response_model=TutorProfileRead)
 async def update_my_profile(
     profile_update: TutorProfileUpdate,
@@ -107,6 +129,84 @@ async def update_my_profile(
     response = TutorProfileRead.model_validate(profile)
     response.full_name = user.full_name
     return response
+
+
+GUAYAQUIL_TZ = ZoneInfo("America/Guayaquil")
+
+
+@router.get("/availability", response_model=list[SlotRead])
+async def get_availability_slots(
+    tutor_id: uuid.UUID,
+    date: date,
+    session: AsyncSession = Depends(get_async_session),
+):
+    # 1. Get day of week (0=Sunday, 6=Saturday)
+    # Python: Mon=0, Sun=6.
+    day_of_week = (date.weekday() + 1) % 7
+
+    # 2. Get Tutor Profile and Availability Patterns
+    tutor_query = select(TutorProfile).where(TutorProfile.user_id == tutor_id)
+    tutor_result = await session.execute(tutor_query)
+    tutor = tutor_result.scalar_one_or_none()
+
+    if not tutor:
+        raise HTTPException(status_code=404, detail="Tutor not found")
+
+    patterns_query = select(AvailabilityPattern).where(
+        and_(
+            AvailabilityPattern.tutor_id == tutor_id,
+            AvailabilityPattern.day_of_week == day_of_week,
+            AvailabilityPattern.is_active == True,
+        )
+    )
+    patterns_result = await session.execute(patterns_query)
+    patterns = patterns_result.scalars().all()
+
+    # 3. Get Appointments for that day
+    # Define the range for the requested date in Guayaquil time
+    start_of_day = datetime.combine(date, time.min, tzinfo=GUAYAQUIL_TZ)
+    end_of_day = datetime.combine(date, time.max, tzinfo=GUAYAQUIL_TZ)
+
+    appointments_query = select(Appointment).where(
+        and_(
+            Appointment.tutor_id == tutor_id,
+            Appointment.status.in_(["pending", "confirmed"]),
+            Appointment.start_datetime >= start_of_day,
+            Appointment.start_datetime <= end_of_day,
+        )
+    )
+    appointments_result = await session.execute(appointments_query)
+    appointments = appointments_result.scalars().all()
+
+    slots = []
+    duration = timedelta(minutes=tutor.session_duration_minutes)
+
+    for pattern in patterns:
+        current_time = datetime.combine(date, pattern.start_time, tzinfo=GUAYAQUIL_TZ)
+        pattern_end = datetime.combine(date, pattern.end_time, tzinfo=GUAYAQUIL_TZ)
+
+        while current_time + duration <= pattern_end:
+            slot_start = current_time
+            slot_end = current_time + duration
+
+            # Check overlap with appointments
+            is_available = True
+            for appt in appointments:
+                # Overlap logic: (StartA < EndB) and (EndA > StartB)
+                if (slot_start < appt.end_datetime) and (slot_end > appt.start_datetime):
+                    is_available = False
+                    break
+
+            slots.append(
+                SlotRead(
+                    start_datetime=slot_start,
+                    end_datetime=slot_end,
+                    available=is_available,
+                )
+            )
+            current_time += duration
+
+    return slots
 
 
 @router.get("/{public_handle}", response_model=TutorProfileRead)
