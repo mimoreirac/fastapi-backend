@@ -33,10 +33,13 @@ Managed via `fastapi-users`.
 *   **PUT `/tutors/me`**: Update current tutor profile.
 *   **GET `/tutors/availability`**: Get availability slots for a specific date.
     *   **Params**: `tutor_id` (UUID), `date` (YYYY-MM-DD)
+    *   **Response**: `[{"tutor_id": "...", "start_datetime": "...", "end_datetime": "...", "available": true, "pattern_id": 1}]`
 *   **GET `/tutors/{public_handle}`**: Publicly view a tutor's profile.
+    *   **Response**: `{"tutor_id": "UUID", "public_handle": "...", "specialty": "...", "bio": "...", "session_duration_minutes": 60, "full_name": "..."}`
 *   **POST `/tutors/me/availability`**: Add a weekly availability pattern.
     *   **Body**: `{"day_of_week": 1, "start_time": "09:00:00", "end_time": "17:00:00"}`
 *   **GET `/tutors/{public_handle}/availability`**: Get a tutor's active availability patterns.
+    *   **Response**: `[{"id": 1, "tutor_id": "UUID", "day_of_week": 1, ...}]`
 *   **PUT `/tutors/me/availability/{id}`**: Update availability pattern.
 *   **DELETE `/tutors/me/availability/{id}`**: Remove availability pattern.
 

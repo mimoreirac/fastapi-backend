@@ -200,6 +200,7 @@ async def calculate_slots(
 
             slots.append(
                 SlotRead(
+                    tutor_id=tutor_id,
                     start_datetime=slot_start,
                     end_datetime=slot_end,
                     available=is_available,

@@ -1,3 +1,4 @@
+import uuid
 from pydantic import BaseModel, Field, ConfigDict, field_validator
 from datetime import time, datetime
 
@@ -17,10 +18,10 @@ class TutorProfileUpdate(BaseModel):
     session_duration_minutes: int | None = Field(None, ge=15, le=180)
 
 class TutorProfileRead(TutorProfileBase):
-    # We might want to include the user's full name here in the future
+    tutor_id: uuid.UUID = Field(..., validation_alias="user_id")
     full_name: str | None = None 
     
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
 
 class AvailabilityPatternBase(BaseModel):
@@ -46,11 +47,13 @@ class AvailabilityPatternUpdate(BaseModel):
 
 class AvailabilityPatternRead(AvailabilityPatternBase):
     id: int
+    tutor_id: uuid.UUID
     
     model_config = ConfigDict(from_attributes=True)
 
 
 class SlotRead(BaseModel):
+    tutor_id: uuid.UUID
     start_datetime: datetime
     end_datetime: datetime
     available: bool
