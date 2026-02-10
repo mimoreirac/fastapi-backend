@@ -135,17 +135,16 @@ async def update_my_profile(
 GUAYAQUIL_TZ = ZoneInfo("America/Guayaquil")
 
 
-@router.get("/availability", response_model=list[SlotRead])
-async def get_availability_slots(
+async def calculate_slots(
     tutor_id: uuid.UUID,
-    date: date,
-    session: AsyncSession = Depends(get_async_session),
-):
+    target_date: date,
+    session: AsyncSession,
+) -> list[SlotRead]:
     # 1. Get day of week (0=Sunday, 6=Saturday)
     # Python: Mon=0, Sun=6.
-    day_of_week = (date.weekday() + 1) % 7
+    day_of_week = (target_date.weekday() + 1) % 7
 
-    # 2. Get Tutor Profile and Availability Patterns
+    # 2. Get Tutor Profile
     tutor_query = select(TutorProfile).where(TutorProfile.user_id == tutor_id)
     tutor_result = await session.execute(tutor_query)
     tutor = tutor_result.scalar_one_or_none()
@@ -153,6 +152,7 @@ async def get_availability_slots(
     if not tutor:
         raise HTTPException(status_code=404, detail="Tutor not found")
 
+    # 3. Get Availability Patterns
     patterns_query = select(AvailabilityPattern).where(
         and_(
             AvailabilityPattern.tutor_id == tutor_id,
@@ -163,10 +163,10 @@ async def get_availability_slots(
     patterns_result = await session.execute(patterns_query)
     patterns = patterns_result.scalars().all()
 
-    # 3. Get Appointments for that day
+    # 4. Get Appointments for that day
     # Define the range for the requested date in Guayaquil time
-    start_of_day = datetime.combine(date, time.min, tzinfo=GUAYAQUIL_TZ)
-    end_of_day = datetime.combine(date, time.max, tzinfo=GUAYAQUIL_TZ)
+    start_of_day = datetime.combine(target_date, time.min, tzinfo=GUAYAQUIL_TZ)
+    end_of_day = datetime.combine(target_date, time.max, tzinfo=GUAYAQUIL_TZ)
 
     appointments_query = select(Appointment).where(
         and_(
@@ -183,8 +183,8 @@ async def get_availability_slots(
     duration = timedelta(minutes=tutor.session_duration_minutes)
 
     for pattern in patterns:
-        current_time = datetime.combine(date, cast(time, pattern.start_time), tzinfo=GUAYAQUIL_TZ)
-        pattern_end = datetime.combine(date, cast(time, pattern.end_time), tzinfo=GUAYAQUIL_TZ)
+        current_time = datetime.combine(target_date, cast(time, pattern.start_time), tzinfo=GUAYAQUIL_TZ)
+        pattern_end = datetime.combine(target_date, cast(time, pattern.end_time), tzinfo=GUAYAQUIL_TZ)
 
         while current_time + duration <= pattern_end:
             slot_start = current_time
@@ -209,6 +209,15 @@ async def get_availability_slots(
             current_time += duration
 
     return slots
+
+
+@router.get("/availability", response_model=list[SlotRead])
+async def get_availability_slots(
+    tutor_id: uuid.UUID,
+    date: date,
+    session: AsyncSession = Depends(get_async_session),
+):
+    return await calculate_slots(tutor_id, date, session)
 
 
 @router.get("/{public_handle}", response_model=TutorProfileRead)
@@ -250,9 +259,10 @@ async def create_availability_pattern(
     await session.refresh(new_pattern)
     return new_pattern
 
-@router.get("/{public_handle}/availability", response_model=list[AvailabilityPatternRead])
+@router.get("/{public_handle}/availability", response_model=list[SlotRead] | list[AvailabilityPatternRead])
 async def get_tutor_availability(
     public_handle: str,
+    date: date | None = None,
     session: AsyncSession = Depends(get_async_session)
 ):
     # Verify tutor exists
@@ -261,12 +271,16 @@ async def get_tutor_availability(
     if not tutor:
         raise HTTPException(status_code=404, detail="Tutor not found")
 
+    if date:
+        return await calculate_slots(tutor.user_id, date, session)
+
     result = await session.execute(
         select(AvailabilityPattern)
         .where(AvailabilityPattern.tutor_id == tutor.user_id)
         .where(AvailabilityPattern.is_active)
     )
     return result.scalars().all()
+
 
 @router.put("/me/availability/{pattern_id}", response_model=AvailabilityPatternRead)
 async def update_availability_pattern(

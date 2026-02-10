@@ -1,10 +1,10 @@
 import uuid
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, time
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, and_
+from sqlalchemy import select, or_, and_, func, cast, Time
 
 from db import get_async_session
 from users.models import User
@@ -84,6 +84,9 @@ async def create_appointment(
 
 @router.get("/me", response_model=List[AppointmentRead])
 async def get_my_appointments(
+    day_of_week: Optional[int] = None,
+    start_time: Optional[time] = None,
+    end_time: Optional[time] = None,
     user: User = Depends(current_active_user),
     session: AsyncSession = Depends(get_async_session)
 ):
@@ -93,7 +96,26 @@ async def get_my_appointments(
             Appointment.client_id == user.id,
             Appointment.tutor_id == user.id
         )
-    ).order_by(Appointment.start_datetime)
+    )
+
+    # Timezone conversion for correct DOW/Time filtering
+    # Postgres stores timestamptz. usage of AT TIME ZONE converts to timestamp (no tz) in that zone.
+    # We assume 'America/Guayaquil' as per project specs.
+    
+    local_dt = func.timezone('America/Guayaquil', Appointment.start_datetime)
+    local_end_dt = func.timezone('America/Guayaquil', Appointment.end_datetime)
+
+    if day_of_week is not None:
+        # Postgres DOW: 0=Sunday, 6=Saturday
+        query = query.where(func.extract('dow', local_dt) == day_of_week)
+
+    if start_time:
+        query = query.where(cast(local_dt, Time) >= start_time)
+        
+    if end_time:
+        query = query.where(cast(local_end_dt, Time) <= end_time)
+
+    query = query.order_by(Appointment.start_datetime)
     
     result = await session.execute(query)
     return result.scalars().all()
