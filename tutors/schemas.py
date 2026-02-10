@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field, ConfigDict, field_validator
-from datetime import time
+from datetime import time, datetime
 
 class TutorProfileBase(BaseModel):
     public_handle: str = Field(..., max_length=50, pattern="^[a-z0-9-]+$")

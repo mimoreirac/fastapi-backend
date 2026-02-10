@@ -1,6 +1,7 @@
 import uuid
 from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
+from typing import cast
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_
@@ -156,7 +157,7 @@ async def get_availability_slots(
         and_(
             AvailabilityPattern.tutor_id == tutor_id,
             AvailabilityPattern.day_of_week == day_of_week,
-            AvailabilityPattern.is_active == True,
+            AvailabilityPattern.is_active,
         )
     )
     patterns_result = await session.execute(patterns_query)
@@ -182,8 +183,8 @@ async def get_availability_slots(
     duration = timedelta(minutes=tutor.session_duration_minutes)
 
     for pattern in patterns:
-        current_time = datetime.combine(date, pattern.start_time, tzinfo=GUAYAQUIL_TZ)
-        pattern_end = datetime.combine(date, pattern.end_time, tzinfo=GUAYAQUIL_TZ)
+        current_time = datetime.combine(date, cast(time, pattern.start_time), tzinfo=GUAYAQUIL_TZ)
+        pattern_end = datetime.combine(date, cast(time, pattern.end_time), tzinfo=GUAYAQUIL_TZ)
 
         while current_time + duration <= pattern_end:
             slot_start = current_time
