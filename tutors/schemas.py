@@ -54,3 +54,4 @@ class SlotRead(BaseModel):
     start_datetime: datetime
     end_datetime: datetime
     available: bool
+    pattern_id: int

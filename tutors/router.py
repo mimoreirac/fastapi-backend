@@ -203,6 +203,7 @@ async def get_availability_slots(
                     start_datetime=slot_start,
                     end_datetime=slot_end,
                     available=is_available,
+                    pattern_id=pattern.id,
                 )
             )
             current_time += duration
